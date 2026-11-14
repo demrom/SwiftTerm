@@ -6184,6 +6184,8 @@ open class Terminal {
     public func parse (buffer: ArraySlice<UInt8>)
     {
         parser.parse(data: buffer)
+        // Wake terminal scripts after parsing, without polling or feeding input.
+        NotificationCenter.default.post(name: Notification.Name("AShellTerminalOutput"), object: self)
     }
      
     /**
