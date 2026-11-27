@@ -5,6 +5,61 @@
 
 import Foundation
 
+extension Terminal {
+    /// Encodes a named keyboard chord using the same modes as hardware input.
+    /// Returns nil for an unknown chord or one the current protocol cannot express.
+    /// Call on the terminal processing thread, then deliver through the view's send path.
+    public func encodeKeyboardKey(_ name: String, backspaceSendsControlH: Bool = false) -> [UInt8]? {
+        var keyName = name.lowercased()
+        var modifiers: KittyKeyboardModifiers = []
+        let prefixes: [(String, KittyKeyboardModifiers)] = [("ctrl-", .ctrl), ("alt-", .alt), ("meta-", .alt), ("shift-", .shift)]
+        while let (prefix, modifier) = prefixes.first(where: { keyName.hasPrefix($0.0) }) {
+            guard !modifiers.contains(modifier) else { return nil }
+            modifiers.insert(modifier)
+            keyName.removeFirst(prefix.count)
+        }
+        let functional: [String: KittyFunctionalKey] = [
+            "esc": .escape, "enter": .enter, "tab": .tab, "backspace": .backspace,
+            "insert": .insert, "delete": .delete, "up": .up, "down": .down,
+            "left": .left, "right": .right, "home": .home, "end": .end,
+            "pageup": .pageUp, "pagedown": .pageDown,
+            "f1": .f1, "f2": .f2, "f3": .f3, "f4": .f4, "f5": .f5, "f6": .f6,
+            "f7": .f7, "f8": .f8, "f9": .f9, "f10": .f10, "f11": .f11, "f12": .f12,
+            "keypad0": .keypad0, "keypad1": .keypad1, "keypad2": .keypad2,
+            "keypad3": .keypad3, "keypad4": .keypad4, "keypad5": .keypad5,
+            "keypad6": .keypad6, "keypad7": .keypad7, "keypad8": .keypad8,
+            "keypad9": .keypad9, "keypaddecimal": .keypadDecimal,
+            "keypaddivide": .keypadDivide, "keypadmultiply": .keypadMultiply,
+            "keypadsubtract": .keypadSubtract, "keypadadd": .keypadAdd,
+            "keypadenter": .keypadEnter, "keypadequal": .keypadEqual
+        ]
+        let key: KittyKey
+        var shifted: UnicodeScalar?
+        if let function = functional[keyName] {
+            key = .functional(function)
+        } else if keyName.unicodeScalars.count == 1, let scalar = keyName.unicodeScalars.first, scalar.value >= 32, scalar.value < 127 {
+            key = .unicode(scalar.value)
+            shifted = keyName.uppercased().unicodeScalars.first
+        } else {
+            return nil
+        }
+        let encoder = KittyKeyboardEncoder(flags: keyboardEnhancementFlags,
+                                           applicationCursor: applicationCursor,
+                                           applicationKeypad: applicationKeypad,
+                                           backspaceSendsControlH: backspaceSendsControlH)
+        // Hardware keypad events carry their printable text in numeric mode.
+        let keypadText: [String: String] = [
+            "keypad0": "0", "keypad1": "1", "keypad2": "2", "keypad3": "3",
+            "keypad4": "4", "keypad5": "5", "keypad6": "6", "keypad7": "7",
+            "keypad8": "8", "keypad9": "9", "keypaddecimal": ".", "keypaddivide": "/",
+            "keypadmultiply": "*", "keypadsubtract": "-", "keypadadd": "+",
+            "keypadenter": "\r", "keypadequal": "="
+        ]
+        return encoder.encode(KittyKeyEvent(key: key, modifiers: modifiers, eventType: .press,
+                                           text: keypadText[keyName], shiftedKey: shifted, baseLayoutKey: nil))
+    }
+}
+
 enum KittyKey {
     case unicode(UInt32)
     case functional(KittyFunctionalKey)
